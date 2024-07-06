@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchCoordinates, calculateMidpoint, calculateDistance } from './utils';
 import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
 import { Typography, Rating, Box } from '@mui/material';
-import StarIcon from '@mui/icons-material/Star';
+import { Star as StarIcon } from '@mui/icons-material';
 
 const mapContainerStyle = {
   height: "400px",
