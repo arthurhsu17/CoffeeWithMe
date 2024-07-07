@@ -205,10 +205,12 @@ const MapComponent = () => {
   };
 
   const iconUrls = {
-    green: '/images/markers/green-dot.png',
-    blue: '/images/markers/blue-dot.png',
-    red: '/images/markers/red-dot.png',
-    purple: '/images/markers/purple-dot.png'
+    green: '/images/green-dot.png',
+    blue: '/images/blue-dot.png',
+    red: '/images/red-dot.png',
+    purple: '/images/purple-dot.png'
+    
+    
   };
 
   const GoogleRating = ({ rating, totalRatings }) => {
@@ -274,15 +276,15 @@ const MapComponent = () => {
             center={mapCenter || currentLocation || { lat: 0, lng: 0 }}
             zoom={mapZoom}
           >
-          {midpoint && <Marker position={midpoint} options={{ icon: { url: iconUrls.green } }} />}
-          {coords1 && <Marker position={coords1} options={{ icon: { url: iconUrls.blue } }} />}
-          {coords2 && <Marker position={coords2} options={{ icon: { url: iconUrls.blue } }} />}
-          {currentLocation && <Marker position={currentLocation} options={{ icon: { url: iconUrls.purple } }} />}
+          {midpoint && <Marker position={midpoint} icon={{ url: iconUrls.green }} />}
+          {coords1 && <Marker position={coords1} icon={{ url: iconUrls.blue }} />}
+          {coords2 && <Marker position={coords2} icon={{ url: iconUrls.blue }} />}
+          {currentLocation && <Marker position={currentLocation} icon={{ url: iconUrls.purple }} />}
           {topCoffeeShops.map((shop, index) => (
             <Marker
-              key={shop.id} // Use a unique identifier for the key prop
-              position={{ lat: parseFloat(shop.lat), lng: parseFloat(shop.lon) }} // Ensure coordinates are numbers
-              options={{ icon: { url: iconUrls.red } }}
+              key={shop.id}
+              position={{ lat: shop.lat, lng: shop.lon }}
+              icon={{ url: iconUrls.red }}
               onClick={() => handleMarkerClick(shop)}
             />
           ))}
