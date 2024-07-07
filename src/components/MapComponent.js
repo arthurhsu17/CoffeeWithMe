@@ -5,7 +5,7 @@ import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/ap
 const mapContainerStyle = {
   height: "400px",
   width: "100%",
-  maxWidth: "800px",
+  maxWidth: "100vw",
   margin: "0 auto"
 };
 
@@ -35,7 +35,6 @@ const Legend = () => {
   );
 };
 
-
 const MapComponent = () => {
   const [location1, setLocation1] = useState('266 Derby Road NG7 1PR');
   const [location2, setLocation2] = useState('Pret a Manger Nottingham');
@@ -54,6 +53,7 @@ const MapComponent = () => {
         (position) => {
           const { latitude, longitude } = position.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
+          console.log("Current location set:", { lat: latitude, lng: longitude }); // Added console log
         },
         (error) => {
           console.error("Error getting current location:", error);
@@ -274,7 +274,7 @@ const MapComponent = () => {
           {topCoffeeShops.map((shop, index) => (
             <Marker
               key={shop.id} // Use a unique identifier for the key prop
-              position={{ lat: shop.lat, lng: shop.lon }}
+              position={{ lat: parseFloat(shop.lat), lng: parseFloat(shop.lon) }} // Ensure coordinates are numbers
               options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' } }}
               onClick={() => handleMarkerClick(shop)}
             />
