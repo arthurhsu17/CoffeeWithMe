@@ -28,10 +28,10 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build && npm run build:css",
-    "build:css": "postcss src/index.css -o src/styles/tailwind.css",
+    "build": "npm run build:css && react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "build:css": "postcss src/index.css -o src/index.css"
   },
   "eslintConfig": {
     "extends": [
