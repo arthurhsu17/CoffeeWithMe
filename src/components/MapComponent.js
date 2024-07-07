@@ -65,106 +65,52 @@ const MapComponent = () => {
   }, []);
 
   const fetchCoffeeShops = async (lat, lng) => {
-    const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];node[amenity=cafe](around:5000,${lat},${lng});out;`;
-  
     try {
-      const response = await fetch(overpassUrl);
-      const data = await response.json();
+      // Create a new instance of the PlacesService
+      const map = new window.google.maps.Map(document.createElement('div'));
+      const service = new window.google.maps.places.PlacesService(map);
   
-      if (data && data.elements) {
-        const shopsPromises = data.elements.map(async (element) => {
-          const name = element.tags.name || element.tags['brand'] || "Unnamed Cafe";
-          let address = "Address not available";
-          let postcode = "";
-          let location = "";
-          let additionalInfo = [];
+      // Create a request object for the nearby search
+      const request = {
+        location: new window.google.maps.LatLng(lat, lng),
+        radius: 1000, // 5000 meters = 5km
+        type: 'cafe',
+      };
   
-          if (element.tags['addr:street']) {
-            address = element.tags['addr:street'];
-            if (element.tags['addr:housenumber']) {
-              address = `${element.tags['addr:housenumber']} ${address}`;
-            }
-            if (element.tags['addr:postcode']) {
-              postcode = element.tags['addr:postcode'];
-              address = `${address}, ${postcode}`;
-            }
-          } else if (element.tags['addr:full']) {
-            address = element.tags['addr:full'];
+      // Make the nearby search request
+      const results = await new Promise((resolve, reject) => {
+        service.nearbySearch(request, (results, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+            resolve(results);
+          } else {
+            reject(new Error(`Places API request failed with status: ${status}`));
           }
-  
-          if (element.tags['located_in']) {
-            location = `Located in: ${element.tags['located_in']}`;
-          } else if (element.tags['located_in:name']) {
-            location = `Located in: ${element.tags['located_in:name']}`;
-          }
-  
-          // Collect additional information
-          for (const [key, value] of Object.entries(element.tags)) {
-            if (!['name', 'brand', 'amenity', 'addr:street', 'addr:housenumber', 'addr:full', 'addr:postcode', 'located_in', 'located_in:name'].includes(key)) {
-              additionalInfo.push(`${key}: ${value}`);
-            }
-          }
-          console.log("Additional Info",name, additionalInfo);
-  
-          // Create a new instance of the PlacesService
-          const service = new window.google.maps.places.PlacesService(document.createElement('div'));
-  
-          // Create a request object for the nearby search
-          const request = {
-            location: new window.google.maps.LatLng(element.lat, element.lon),
-            radius: 500,
-            type: 'cafe',
-          };
-  
-          // Make the nearby search request
-          const googleData = await new Promise((resolve, reject) => {
-            service.nearbySearch(request, (results, status) => {
-              if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                console.log("Google Places API response:", results[0]);
-                resolve(results);
-              } else {
-                resolve([]); // Resolve with an empty array if the status is not OK
-              }
-            });
-          });
-  
-          let googleRating = 0;
-          let googleStars = 0;
-          let userRatingsTotal = 0;
-          if (googleData.length > 0) {
-            googleRating = googleData[0].rating || 0;
-            googleStars = Math.round(googleRating);
-            userRatingsTotal = googleData[0].user_ratings_total || 0;
-            console.log("Extracted data:", { googleRating, googleStars, userRatingsTotal });
-          }
-  
-          return {
-            id: element.id,
-            lat: element.lat,
-            lon: element.lon,
-            name: name,
-            address: address,
-            postcode: postcode,
-            location: location,
-            additionalInfo: additionalInfo,
-            distance: calculateDistance(lat, lng, element.lat, element.lon),
-            googleRating,
-            googleStars,
-            userRatingsTotal,
-          };
         });
+      });
   
-        const shopsData = await Promise.all(shopsPromises);
-        const sortedShops = shopsData.sort((a, b) => a.distance - b.distance);
-        setTopCoffeeShops(sortedShops.slice(0, 5));
-      } else {
-        setTopCoffeeShops([]); // Set an empty array if data is undefined or doesn't have the expected structure
-      }
+      // Process the results
+      const shopsData = results.map(place => ({
+        id: place.place_id,
+        lat: place.geometry.location.lat(),
+        lon: place.geometry.location.lng(),
+        name: place.name,
+        address: place.vicinity,
+        googleRating: place.rating || 0,
+        googleStars: Math.round(place.rating) || 0,
+        userRatingsTotal: place.user_ratings_total || 0,
+        distance: calculateDistance(lat, lng, place.geometry.location.lat(), place.geometry.location.lng()),
+      }));
+  
+      // Sort and set the top coffee shops
+      const sortedShops = shopsData.sort((a, b) => a.distance - b.distance);
+      setTopCoffeeShops(sortedShops.slice(0, 5));
+  
     } catch (error) {
       console.error("Error fetching coffee shops:", error);
-      setTopCoffeeShops([]); // Set an empty array in case of an error
+      setTopCoffeeShops([]);
     }
   };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
