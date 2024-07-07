@@ -13,22 +13,22 @@ const libraries = ['places'];
 
 const Legend = () => {
   return (
-    <div className="bg-base-100 p-4 rounded-box shadow-md mt-4">
+    <div className="bg-white p-4 rounded-box shadow-md mt-4">
       <h3 className="text-lg font-semibold mb-2">Legend</h3>
       <div className="flex items-center mb-2">
-        <div className="w-5 h-5 bg-error mr-2"></div>
+        <div className="w-5 h-5 bg-red-500 rounded-full mr-2"></div>
         <span>Coffee Shops</span>
       </div>
       <div className="flex items-center mb-2">
-        <div className="w-5 h-5 bg-success mr-2"></div>
+        <div className="w-5 h-5 bg-green-500 rounded-full mr-2"></div>
         <span>Midpoint</span>
       </div>
       <div className="flex items-center mb-2">
-        <div className="w-5 h-5 bg-info mr-2"></div>
+        <div className="w-5 h-5 bg-blue-500 rounded-full mr-2"></div>
         <span>Selected Locations</span>
       </div>
       <div className="flex items-center">
-        <div className="w-5 h-5 bg-secondary mr-2"></div>
+        <div className="w-5 h-5 bg-purple-500 rounded-full mr-2"></div>
         <span>Current Location</span>
       </div>
     </div>
@@ -64,7 +64,7 @@ const MapComponent = () => {
     }
   }, []);
 
-  const fetchCoffeeShops = async (lat, lng) => {
+  const fetchCoffeeShops = async (lat, lng, location1, location2) => {
     try {
       // Create a new instance of the PlacesService
       const map = new window.google.maps.Map(document.createElement('div'));
@@ -89,16 +89,26 @@ const MapComponent = () => {
       });
   
       // Process the results
-      const shopsData = results.map(place => ({
-        id: place.place_id,
-        lat: place.geometry.location.lat(),
-        lon: place.geometry.location.lng(),
-        name: place.name,
-        address: place.vicinity,
-        googleRating: place.rating || 0,
-        googleStars: Math.round(place.rating) || 0,
-        userRatingsTotal: place.user_ratings_total || 0,
-        distance: calculateDistance(lat, lng, place.geometry.location.lat(), place.geometry.location.lng()),
+      const shopsData = await Promise.all(results.map(async place => {
+        const placeLocation = new window.google.maps.LatLng(place.geometry.location.lat(), place.geometry.location.lng());
+        
+        // Get travel times
+        const travelTimes1 = await getTravelTimes(location1, placeLocation);
+        const travelTimes2 = await getTravelTimes(location2, placeLocation);
+
+        return {
+          id: place.place_id,
+          lat: place.geometry.location.lat(),
+          lon: place.geometry.location.lng(),
+          name: place.name,
+          address: place.vicinity,
+          googleRating: place.rating || 0,
+          googleStars: Math.round(place.rating) || 0,
+          userRatingsTotal: place.user_ratings_total || 0,
+          distance: calculateDistance(lat, lng, place.geometry.location.lat(), place.geometry.location.lng()),
+          travelTimes1,
+          travelTimes2
+        };
       }));
   
       // Sort and set the top coffee shops
@@ -110,6 +120,61 @@ const MapComponent = () => {
       setTopCoffeeShops([]);
     }
   };
+
+  const getTravelTimes = async (origin, destination) => {
+    const service = new window.google.maps.DistanceMatrixService();
+  
+    const getTime = (travelMode) => {
+      return new Promise((resolve, reject) => {
+        service.getDistanceMatrix(
+          {
+            origins: [origin],
+            destinations: [destination],
+            travelMode: travelMode,
+            unitSystem: window.google.maps.UnitSystem.METRIC,
+            transitOptions: travelMode === 'TRANSIT' ? { departureTime: new Date() } : undefined,
+          },
+          (response, status) => {
+            if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
+              resolve(response.rows[0].elements[0].duration.text);
+            } else {
+              resolve('N/A'); // Changed from reject to resolve with 'N/A'
+            }
+          }
+        );
+      });
+    };
+  
+    try {
+      const [drivingTime, walkingTime, transitTime] = await Promise.all([
+        getTime(window.google.maps.TravelMode.DRIVING),
+        getTime(window.google.maps.TravelMode.WALKING),
+        getTime(window.google.maps.TravelMode.TRANSIT)
+      ]);
+      return { driving: drivingTime, walking: walkingTime, transit: transitTime };
+    } catch (error) {
+      console.error("Error getting travel times:", error);
+      return { driving: 'N/A', walking: 'N/A', transit: 'N/A' };
+    }
+  };
+
+  const TravelTimes = ({ location, drivingTime, walkingTime, transitTime }) => (
+    <div className="mt-2">
+      <p className="font-semibold">From {location}:</p>
+      <p className="ml-2 flex items-center">
+        <img src={iconUrls.driving} alt="Driving" className="h-5 w-5 mr-1" />
+        Driving: <span className="font-medium ml-1">{drivingTime}</span>
+      </p>
+      <p className="ml-2 flex items-center">
+        <img src={iconUrls.walking} alt="Walking" className="h-5 w-5 mr-1" />
+        Walking: <span className="font-medium ml-1">{walkingTime}</span>
+      </p>
+      <p className="ml-2 flex items-center">
+        <img src={iconUrls.transit} alt="Public Transport" className="h-5 w-5 mr-1" />
+        Public Transport: <span className="font-medium ml-1">{transitTime}</span>
+      </p>
+    </div>
+  );
 
 
   const handleSubmit = async (e) => {
@@ -136,7 +201,10 @@ const MapComponent = () => {
       const zoomLevel = distance < 5 ? 14 : distance < 10 ? 12 : 10;
       setMapZoom(zoomLevel);
 
-      fetchCoffeeShops(calculatedMidpoint.lat, calculatedMidpoint.lng);
+      const location1LatLng = new window.google.maps.LatLng(coords1.lat, coords1.lng);
+      const location2LatLng = new window.google.maps.LatLng(coords2.lat, coords2.lng);
+  
+      fetchCoffeeShops(calculatedMidpoint.lat, calculatedMidpoint.lng, location1LatLng, location2LatLng);
     } else {
       console.error("One or both locations could not be found.");
     }
@@ -154,9 +222,10 @@ const MapComponent = () => {
     green: '/images/green-dot.png',
     blue: '/images/blue-dot.png',
     red: '/images/red-dot.png',
-    purple: '/images/purple-dot.png'
-    
-    
+    purple: '/images/purple-dot.png',
+    driving: '/images/car-driving.png',
+    walking: '/images/man-walking.png',
+    transit: '/images/public-transport.png'
   };
 
   const GoogleRating = ({ rating, totalRatings }) => {
@@ -265,13 +334,21 @@ const MapComponent = () => {
             {topCoffeeShops.map((shop, index) => (
               <div key={index} className="card bg-base-100 shadow-xl">
                 <div className="card-body">
-                  <h3 className="card-title">{shop.name}</h3>
-                  <p>Address: {shop.address}</p>
+                  <h3 className="card-title text-xl">{shop.name}</h3>
+                  <p className="text-gray-600">{shop.address}</p>
                   <GoogleRating rating={shop.googleRating} totalRatings={shop.userRatingsTotal} />
-                  {shop.location && (
-                    <p>{shop.location}</p>
-                  )}
-                  
+                  <TravelTimes 
+                    location={location1}
+                    drivingTime={shop.travelTimes1.driving}
+                    walkingTime={shop.travelTimes1.walking}
+                    transitTime={shop.travelTimes1.transit}
+                  />
+                  <TravelTimes 
+                    location={location2}
+                    drivingTime={shop.travelTimes2.driving}
+                    walkingTime={shop.travelTimes2.walking}
+                    transitTime={shop.travelTimes2.transit}
+                  />
                 </div>
               </div>
             ))}
