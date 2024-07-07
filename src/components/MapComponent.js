@@ -1,34 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { fetchCoordinates, calculateMidpoint, calculateDistance } from './utils';
 import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
-import { Typography, Rating, Box } from '@mui/material';
-import { Star as StarIcon } from '@mui/icons-material';
 
 const mapContainerStyle = {
   height: "400px",
-  width: "800px"
+  width: "100%",
+  maxWidth: "800px",
+  margin: "0 auto"
 };
 
 const libraries = ['places'];
 
 const Legend = () => {
   return (
-    <div style={{ background: 'white', padding: '10px', borderRadius: '5px', marginTop: '10px' }}>
-      <h3>Legend</h3>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
-        <div style={{ width: '20px', height: '20px', backgroundColor: 'red', marginRight: '5px' }}></div>
+    <div className="bg-base-100 p-4 rounded-box shadow-md mt-4">
+      <h3 className="text-lg font-semibold mb-2">Legend</h3>
+      <div className="flex items-center mb-2">
+        <div className="w-5 h-5 bg-error mr-2"></div>
         <span>Coffee Shops</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
-        <div style={{ width: '20px', height: '20px', backgroundColor: 'green', marginRight: '5px' }}></div>
+      <div className="flex items-center mb-2">
+        <div className="w-5 h-5 bg-success mr-2"></div>
         <span>Midpoint</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
-        <div style={{ width: '20px', height: '20px', backgroundColor: 'blue', marginRight: '5px' }}></div>
+      <div className="flex items-center mb-2">
+        <div className="w-5 h-5 bg-info mr-2"></div>
         <span>Selected Locations</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div style={{ width: '20px', height: '20px', backgroundColor: 'purple', marginRight: '5px' }}></div>
+      <div className="flex items-center">
+        <div className="w-5 h-5 bg-secondary mr-2"></div>
         <span>Current Location</span>
       </div>
     </div>
@@ -104,6 +104,7 @@ const MapComponent = () => {
               additionalInfo.push(`${key}: ${value}`);
             }
           }
+          console.log("Additional Info",name, additionalInfo);
   
           // Create a new instance of the PlacesService
           const service = new window.google.maps.places.PlacesService(document.createElement('div'));
@@ -205,62 +206,67 @@ const MapComponent = () => {
 
   const GoogleRating = ({ rating, totalRatings }) => {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          mt: 1,
-          mb: 1,
-        }}
-      >
-        <Rating
-          name="google-rating"
-          value={rating}
-          precision={0.1}
-          readOnly
-          emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}
-        />
-        <Box sx={{ ml: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            {rating.toFixed(1)} ({totalRatings})
-          </Typography>
-        </Box>
-      </Box>
+      <div className="flex items-center mt-2 mb-2">
+        <div className="rating rating-sm">
+          {[...Array(5)].map((_, i) => (
+            <input
+              key={i}
+              type="radio"
+              name={`rating-${rating}`}
+              className="mask mask-star-2 bg-orange-400"
+              checked={i < Math.round(rating)}
+              readOnly
+            />
+          ))}
+        </div>
+        <span className="ml-2 text-sm opacity-70">
+          {rating.toFixed(1)} ({totalRatings})
+        </span>
+      </div>
     );
   };
 
   return (
-    <div>
-      <h1>Find Coffee Shops Between Two Locations</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Location 1:
-          <input
-            type="text"
-            value={location1}
-            onChange={(e) => setLocation1(e.target.value)}
-            placeholder="e.g., 266 Derby Road"
-            required
-          />
-        </label>
-        <label>
-          Location 2:
-          <input
-            type="text"
-            value={location2}
-            onChange={(e) => setLocation2(e.target.value)}
-            placeholder="e.g., Savoy Cinema"
-            required
-          />
-        </label>
-        <button type="submit">Search</button>
+    <div className="container mx-auto px-4 py-8 bg-gray-800">
+      <h1 className="text-4xl font-bold mb-8 text-center text-white">Find Artisanal Coffee Shops</h1>
+      <form onSubmit={handleSubmit} className="mb-8">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="form-control flex-1">
+            <label className="label">
+              <span className="label-text">Location 1</span>
+            </label>
+            <input
+              type="text"
+              value={location1}
+              onChange={(e) => setLocation1(e.target.value)}
+              placeholder="e.g., 266 Derby Road"
+              required
+              className="input input-bordered w-full"
+            />
+          </div>
+          <div className="form-control flex-1">
+            <label className="label">
+              <span className="label-text">Location 2</span>
+            </label>
+            <input
+              type="text"
+              value={location2}
+              onChange={(e) => setLocation2(e.target.value)}
+              placeholder="e.g., Savoy Cinema"
+              required
+              className="input input-bordered w-full"
+            />
+          </div>
+          <button type="submit" className="btn btn-accent self-end">Search</button>
+        </div>
       </form>
-      <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={libraries}>
-        <GoogleMap
-          mapContainerStyle={mapContainerStyle}
-          center={mapCenter || currentLocation || { lat: 0, lng: 0 }}
-          zoom={mapZoom}
-        >
+      <div className="mb-8">
+        <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={libraries}>
+          <GoogleMap
+            mapContainerStyle={mapContainerStyle}
+            center={mapCenter || currentLocation || { lat: 0, lng: 0 }}
+            zoom={mapZoom}
+          >
           {midpoint && <Marker position={midpoint} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png' } }} />}
           {coords1 && <Marker position={coords1} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png' } }} />}
           {coords2 && <Marker position={coords2} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png' } }} />}
@@ -282,16 +288,7 @@ const MapComponent = () => {
                 <h3>{selectedShop.name}</h3>
                 <p>{selectedShop.address}</p>
                 {selectedShop.location && <p>{selectedShop.location}</p>}
-                {selectedShop.additionalInfo.length > 0 && (
-                  <>
-                    <p>Additional Information:</p>
-                    <ul>
-                      {selectedShop.additionalInfo.map((info, i) => (
-                        <li key={i}>{info}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
+
                 <GoogleMap
                   mapContainerStyle={{ height: '200px', width: '300px' }}
                   center={{ lat: selectedShop.lat, lng: selectedShop.lon }}
@@ -302,34 +299,28 @@ const MapComponent = () => {
               </div>
             </InfoWindow>
           )}
-        </GoogleMap>
-      </LoadScript>
+          </GoogleMap>
+        </LoadScript>
+      </div>
       <Legend />
       {topCoffeeShops.length > 0 && (
-        <div>
-          <h2>Top 5 Coffee Shops Near Midpoint</h2>
-          <ul style={{ listStyleType: 'none', padding: 0 }}>
+        <div className="mt-8">
+          <h2 className="text-2xl font-semibold mb-4 text-white">Top 5 Artisanal Coffee Shops Near Midpoint</h2>
+          <div className="space-y-4">
             {topCoffeeShops.map((shop, index) => (
-              <li key={index} style={{ marginBottom: '20px' }}>
-                <Typography variant="h6">{shop.name}</Typography>
-                <Typography variant="body2">Address: {shop.address}</Typography>
-                <GoogleRating rating={shop.googleRating} totalRatings={shop.userRatingsTotal} />
-                {shop.location && (
-                  <Typography variant="body2">{shop.location}</Typography>
-                )}
-                {shop.additionalInfo.length > 0 && (
-                  <>
-                    <Typography variant="body2">Additional Information:</Typography>
-                    <ul>
-                      {shop.additionalInfo.map((info, i) => (
-                        <li key={i}><Typography variant="body2">{info}</Typography></li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </li>
+              <div key={index} className="card bg-base-100 shadow-xl">
+                <div className="card-body">
+                  <h3 className="card-title">{shop.name}</h3>
+                  <p>Address: {shop.address}</p>
+                  <GoogleRating rating={shop.googleRating} totalRatings={shop.userRatingsTotal} />
+                  {shop.location && (
+                    <p>{shop.location}</p>
+                  )}
+                  
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
     </div>
