@@ -13,6 +13,7 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
+    "postcss-cli": "^11.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.24.1",
@@ -21,10 +22,10 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "npm run build:css && react-scripts build",
+    "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "build:css": "npx postcss src/index.css -o src/styles/main.css"
+    "build:css": "postcss src/index.css -o src/styles/main.css"
   },
   "eslintConfig": {
     "extends": [
