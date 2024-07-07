@@ -13,7 +13,7 @@ function App() {
         <Header />
         <main className="container mx-auto p-4">
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<MapComponent />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/map" element={<MapComponent />} />
