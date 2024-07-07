@@ -204,6 +204,13 @@ const MapComponent = () => {
     setSelectedShop(null);
   };
 
+  const iconUrls = {
+    green: '/images/markers/green-dot.png',
+    blue: '/images/markers/blue-dot.png',
+    red: '/images/markers/red-dot.png',
+    purple: '/images/markers/purple-dot.png'
+  };
+
   const GoogleRating = ({ rating, totalRatings }) => {
     return (
       <div className="flex items-center mt-2 mb-2">
@@ -267,15 +274,15 @@ const MapComponent = () => {
             center={mapCenter || currentLocation || { lat: 0, lng: 0 }}
             zoom={mapZoom}
           >
-          {midpoint && <Marker position={midpoint} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png' } }} />}
-          {coords1 && <Marker position={coords1} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png' } }} />}
-          {coords2 && <Marker position={coords2} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png' } }} />}
-          {currentLocation && <Marker position={currentLocation} options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/purple-dot.png' } }} />}
+          {midpoint && <Marker position={midpoint} options={{ icon: { url: iconUrls.green } }} />}
+          {coords1 && <Marker position={coords1} options={{ icon: { url: iconUrls.blue } }} />}
+          {coords2 && <Marker position={coords2} options={{ icon: { url: iconUrls.blue } }} />}
+          {currentLocation && <Marker position={currentLocation} options={{ icon: { url: iconUrls.purple } }} />}
           {topCoffeeShops.map((shop, index) => (
             <Marker
               key={shop.id} // Use a unique identifier for the key prop
               position={{ lat: parseFloat(shop.lat), lng: parseFloat(shop.lon) }} // Ensure coordinates are numbers
-              options={{ icon: { url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' } }}
+              options={{ icon: { url: iconUrls.red } }}
               onClick={() => handleMarkerClick(shop)}
             />
           ))}
