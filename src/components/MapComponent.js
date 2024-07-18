@@ -11,13 +11,13 @@ const mapContainerStyle = {
 
 const libraries = ['places'];
 
-const Legend = () => {
+const Legend = ({searchType}) => {
   return (
     <div className="bg-white p-4 rounded-box shadow-md mt-4">
       <h3 className="text-lg font-semibold mb-2">Legend</h3>
       <div className="flex items-center mb-2">
         <div className="w-5 h-5 bg-red-500 rounded-full mr-2"></div>
-        <span>Coffee Shops</span>
+        <span>{searchType === 'cafe' ? 'Coffee Shops' : searchType === 'bar' ? 'Bars/Pubs' : 'Restaurants'}</span>
       </div>
       <div className="flex items-center mb-2">
         <div className="w-5 h-5 bg-green-500 rounded-full mr-2"></div>
@@ -36,8 +36,8 @@ const Legend = () => {
 };
 
 const MapComponent = () => {
-  const [location1, setLocation1] = useState('266 Derby Road NG7 1PR');
-  const [location2, setLocation2] = useState('Pret a Manger Nottingham');
+  const [location1, setLocation1] = useState('Dollar Bay Point E14 9BX');
+  const [location2, setLocation2] = useState('Chinatown London');
   const [midpoint, setMidpoint] = useState(null);
   const [topCoffeeShops, setTopCoffeeShops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -46,6 +46,7 @@ const MapComponent = () => {
   const [mapCenter, setMapCenter] = useState(null);
   const [mapZoom, setMapZoom] = useState(14);
   const [selectedShop, setSelectedShop] = useState(null);
+  const [searchType, setSearchType] = useState('cafe');
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -64,38 +65,41 @@ const MapComponent = () => {
     }
   }, []);
 
-  const fetchCoffeeShops = async (lat, lng, location1, location2) => {
+  const fetchPlaces = async (lat, lng, location1, location2, searchTypes) => {
     try {
-      // Create a new instance of the PlacesService
       const map = new window.google.maps.Map(document.createElement('div'));
       const service = new window.google.maps.places.PlacesService(map);
   
-      // Create a request object for the nearby search
-      const request = {
+      const requests = searchTypes.map(type => ({
         location: new window.google.maps.LatLng(lat, lng),
-        radius: 1000, // 5000 meters = 5km
-        type: 'cafe',
-      };
+        radius: 1500, // in meters
+        type: type,
+      }));
   
-      // Make the nearby search request
-      const results = await new Promise((resolve, reject) => {
-        service.nearbySearch(request, (results, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-            resolve(results);
-          } else {
-            reject(new Error(`Places API request failed with status: ${status}`));
-          }
-        });
-      });
+      const allResults = await Promise.all(requests.map(request => 
+        new Promise((resolve, reject) => {
+          service.nearbySearch(request, (results, status) => {
+            if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+              resolve(results);
+            } else {
+              resolve([]); // Resolve with empty array if no results
+            }
+          });
+        })
+      ));
+  
+      // Flatten and deduplicate results
+      const uniqueResults = Array.from(new Set(allResults.flat().map(place => place.place_id)))
+        .map(id => allResults.flat().find(place => place.place_id === id));
   
       // Process the results
-      const shopsData = await Promise.all(results.map(async place => {
+      const shopsData = await Promise.all(uniqueResults.map(async place => {
         const placeLocation = new window.google.maps.LatLng(place.geometry.location.lat(), place.geometry.location.lng());
         
         // Get travel times
         const travelTimes1 = await getTravelTimes(location1, placeLocation);
         const travelTimes2 = await getTravelTimes(location2, placeLocation);
-
+  
         return {
           id: place.place_id,
           lat: place.geometry.location.lat(),
@@ -111,16 +115,38 @@ const MapComponent = () => {
         };
       }));
   
-      // Sort and set the top coffee shops
+      // Sort and set the top places
       const sortedShops = shopsData.sort((a, b) => a.distance - b.distance);
       setTopCoffeeShops(sortedShops.slice(0, 5));
   
     } catch (error) {
-      console.error("Error fetching coffee shops:", error);
+      console.error("Error fetching places:", error);
       setTopCoffeeShops([]);
     }
   };
 
+  const handleSearchTypeChange = (type) => {
+    setSearchType(type);
+    if (midpoint) {
+      const location1LatLng = new window.google.maps.LatLng(coords1.lat, coords1.lng);
+      const location2LatLng = new window.google.maps.LatLng(coords2.lat, coords2.lng);
+      
+      let searchTypes;
+      switch(type) {
+        case 'bar':
+          searchTypes = ['bar', 'night_club'];
+          break;
+        case 'restaurant':
+          searchTypes = ['restaurant', 'meal_delivery', 'meal_takeaway'];
+          break;
+        default:
+          searchTypes = [type];
+      }
+      
+      fetchPlaces(midpoint.lat, midpoint.lng, location1LatLng, location2LatLng, searchTypes);
+    }
+  };
+  
   const getTravelTimes = async (origin, destination) => {
     const service = new window.google.maps.DistanceMatrixService();
   
@@ -188,7 +214,7 @@ const MapComponent = () => {
       const calculatedMidpoint = calculateMidpoint(coords1, coords2);
       setMidpoint(calculatedMidpoint);
       setMapCenter(calculatedMidpoint);
-
+  
       // Calculate the distance between the two locations
       const distance = calculateDistance(
         coords1.lat,
@@ -196,15 +222,28 @@ const MapComponent = () => {
         coords2.lat,
         coords2.lng
       );
-
+  
       // Adjust the zoom level based on the distance
       const zoomLevel = distance < 5 ? 14 : distance < 10 ? 12 : 10;
       setMapZoom(zoomLevel);
-
+  
       const location1LatLng = new window.google.maps.LatLng(coords1.lat, coords1.lng);
       const location2LatLng = new window.google.maps.LatLng(coords2.lat, coords2.lng);
   
-      fetchCoffeeShops(calculatedMidpoint.lat, calculatedMidpoint.lng, location1LatLng, location2LatLng);
+      // Determine searchTypes based on current searchType
+      let searchTypes;
+      switch(searchType) {
+        case 'bar':
+          searchTypes = ['bar', 'night_club'];
+          break;
+        case 'restaurant':
+          searchTypes = ['restaurant', 'meal_delivery', 'meal_takeaway'];
+          break;
+        default:
+          searchTypes = [searchType];
+      }
+  
+      fetchPlaces(calculatedMidpoint.lat, calculatedMidpoint.lng, location1LatLng, location2LatLng, searchTypes);
     } else {
       console.error("One or both locations could not be found.");
     }
@@ -284,6 +323,26 @@ const MapComponent = () => {
           <button type="submit" className="btn btn-accent self-end">Search</button>
         </div>
       </form>
+      <div className="flex justify-center mb-4">
+        <button 
+          onClick={() => handleSearchTypeChange('cafe')} 
+          className={`btn mx-2 ${searchType === 'cafe' ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          Cafes
+        </button>
+        <button 
+          onClick={() => handleSearchTypeChange('bar')} 
+          className={`btn mx-2 ${searchType === 'bar' ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          Bars/Pubs
+        </button>
+        <button 
+          onClick={() => handleSearchTypeChange('restaurant')} 
+          className={`btn mx-2 ${searchType === 'restaurant' ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          Restaurants
+        </button>
+      </div>
       <div className="mb-8">
         <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={libraries}>
           <GoogleMap
@@ -326,10 +385,12 @@ const MapComponent = () => {
           </GoogleMap>
         </LoadScript>
       </div>
-      <Legend />
+      <Legend searchType={searchType} />
       {topCoffeeShops.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-2xl font-semibold mb-4 text-white">Top 5 Artisanal Coffee Shops Near Midpoint</h2>
+          <h2 className="text-2xl font-semibold mb-4 text-white">
+            Top 5 {searchType === 'cafe' ? 'Coffee Shops' : searchType === 'bar' ? 'Bars/Pubs' : 'Restaurants'} Near Midpoint
+          </h2>
           <div className="space-y-4">
             {topCoffeeShops.map((shop, index) => (
               <div key={index} className="card bg-base-100 shadow-xl">
