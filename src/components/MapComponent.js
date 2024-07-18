@@ -291,7 +291,7 @@ const MapComponent = () => {
 
   return (
     <div className="container mx-auto px-4 py-8 bg-gray-800">
-      <h1 className="text-4xl font-bold mb-8 text-center text-white">Find Artisanal Coffee Shops</h1>
+      <h1 className="text-4xl font-bold mb-8 text-center text-white">Find Your Next Meetup Spot</h1>
       <form onSubmit={handleSubmit} className="mb-8">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="form-control flex-1">
