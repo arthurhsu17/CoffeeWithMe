@@ -1,15 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { fetchCoordinates, calculateMidpoint, calculateDistance } from './utils';
-import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
+import {
+  fetchCoordinates,
+  fetchNearbyPlaces,
+  getTravelTimes,
+  fetchTripAdvisorRating,
+  calculateMidpoint,
+  calculateDistance
+} from './utils';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-const mapContainerStyle = {
-  height: "400px",
-  width: "100%",
-  maxWidth: "100vw",
-  margin: "0 auto"
+const SEARCH_RADIUS_METERS = 1500;
+const TOP_SHOP_COUNT = 5;
+
+const makeIcon = (url) => L.icon({
+  iconUrl: url,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
+});
+
+const icons = {
+  green: makeIcon('/images/green-dot.png'),
+  blue: makeIcon('/images/blue-dot.png'),
+  red: makeIcon('/images/red-dot.png'),
+  purple: makeIcon('/images/purple-dot.png')
 };
 
-const libraries = ['places'];
+const iconUrls = {
+  driving: '/images/car-driving.png',
+  walking: '/images/man-walking.png',
+  transit: '/images/public-transport.png'
+};
+
+// MapContainer only reads center/zoom on mount, so push updates imperatively
+const MapUpdater = ({ center, zoom }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView([center.lat, center.lng], zoom);
+    }
+  }, [center, zoom, map]);
+  return null;
+};
 
 const Legend = ({searchType}) => {
   return (
@@ -45,8 +79,9 @@ const MapComponent = () => {
   const [coords2, setCoords2] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
   const [mapZoom, setMapZoom] = useState(14);
-  const [selectedShop, setSelectedShop] = useState(null);
   const [searchType, setSearchType] = useState('cafe');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -54,7 +89,7 @@ const MapComponent = () => {
         (position) => {
           const { latitude, longitude } = position.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
-          console.log("Current location set:", { lat: latitude, lng: longitude }); // Added console log
+          console.log("Current location set:", { lat: latitude, lng: longitude });
         },
         (error) => {
           console.error("Error getting current location:", error);
@@ -65,122 +100,57 @@ const MapComponent = () => {
     }
   }, []);
 
-  const fetchPlaces = async (lat, lng, location1, location2, searchTypes) => {
+  const fetchPlaces = async (lat, lng, origin1, origin2, type) => {
+    setIsLoading(true);
+    setErrorMessage(null);
     try {
-      const map = new window.google.maps.Map(document.createElement('div'));
-      const service = new window.google.maps.places.PlacesService(map);
-  
-      const requests = searchTypes.map(type => ({
-        location: new window.google.maps.LatLng(lat, lng),
-        radius: 1500, // in meters
-        type: type,
-      }));
-  
-      const allResults = await Promise.all(requests.map(request => 
-        new Promise((resolve, reject) => {
-          service.nearbySearch(request, (results, status) => {
-            if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-              resolve(results);
-            } else {
-              resolve([]); // Resolve with empty array if no results
-            }
-          });
-        })
-      ));
-  
-      // Flatten and deduplicate results
-      const uniqueResults = Array.from(new Set(allResults.flat().map(place => place.place_id)))
-        .map(id => allResults.flat().find(place => place.place_id === id));
-  
-      // Process the results
-      const shopsData = await Promise.all(uniqueResults.map(async place => {
-        const placeLocation = new window.google.maps.LatLng(place.geometry.location.lat(), place.geometry.location.lng());
-        
-        // Get travel times
-        const travelTimes1 = await getTravelTimes(location1, placeLocation);
-        const travelTimes2 = await getTravelTimes(location2, placeLocation);
-  
-        return {
-          id: place.place_id,
-          lat: place.geometry.location.lat(),
-          lon: place.geometry.location.lng(),
-          name: place.name,
-          address: place.vicinity,
-          googleRating: place.rating || 0,
-          googleStars: Math.round(place.rating) || 0,
-          userRatingsTotal: place.user_ratings_total || 0,
-          distance: calculateDistance(lat, lng, place.geometry.location.lat(), place.geometry.location.lng()),
+      const places = await fetchNearbyPlaces(lat, lng, SEARCH_RADIUS_METERS, type);
+
+      // Sort by distance from the midpoint and only enrich the top few,
+      // so we stay well within the free routing/rating rate limits
+      const nearest = places
+        .map(place => ({
+          ...place,
+          distance: calculateDistance(lat, lng, place.lat, place.lon)
+        }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, TOP_SHOP_COUNT);
+
+      const tripAdvisorKey = process.env.REACT_APP_TRIPADVISOR_API_KEY;
+      const shopsData = [];
+      for (const place of nearest) {
+        const shopCoords = { lat: place.lat, lng: place.lon };
+        const [travelTimes1, travelTimes2, taRating] = await Promise.all([
+          getTravelTimes(origin1, shopCoords),
+          getTravelTimes(origin2, shopCoords),
+          fetchTripAdvisorRating(place.name, place.lat, place.lon, tripAdvisorKey)
+        ]);
+        shopsData.push({
+          ...place,
+          rating: taRating ? taRating.rating : null,
+          numReviews: taRating ? taRating.numReviews : 0,
           travelTimes1,
           travelTimes2
-        };
-      }));
-  
-      // Sort and set the top places
-      const sortedShops = shopsData.sort((a, b) => a.distance - b.distance);
-      setTopCoffeeShops(sortedShops.slice(0, 5));
-  
+        });
+      }
+
+      setTopCoffeeShops(shopsData);
+      if (shopsData.length === 0) {
+        setErrorMessage("No places found near the midpoint. Try a different search type.");
+      }
     } catch (error) {
       console.error("Error fetching places:", error);
       setTopCoffeeShops([]);
+      setErrorMessage("Something went wrong fetching places. Please try again in a moment.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSearchTypeChange = (type) => {
     setSearchType(type);
-    if (midpoint) {
-      const location1LatLng = new window.google.maps.LatLng(coords1.lat, coords1.lng);
-      const location2LatLng = new window.google.maps.LatLng(coords2.lat, coords2.lng);
-      
-      let searchTypes;
-      switch(type) {
-        case 'bar':
-          searchTypes = ['bar', 'night_club'];
-          break;
-        case 'restaurant':
-          searchTypes = ['restaurant', 'meal_delivery', 'meal_takeaway'];
-          break;
-        default:
-          searchTypes = [type];
-      }
-      
-      fetchPlaces(midpoint.lat, midpoint.lng, location1LatLng, location2LatLng, searchTypes);
-    }
-  };
-  
-  const getTravelTimes = async (origin, destination) => {
-    const service = new window.google.maps.DistanceMatrixService();
-  
-    const getTime = (travelMode) => {
-      return new Promise((resolve, reject) => {
-        service.getDistanceMatrix(
-          {
-            origins: [origin],
-            destinations: [destination],
-            travelMode: travelMode,
-            unitSystem: window.google.maps.UnitSystem.METRIC,
-            transitOptions: travelMode === 'TRANSIT' ? { departureTime: new Date() } : undefined,
-          },
-          (response, status) => {
-            if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
-              resolve(response.rows[0].elements[0].duration.text);
-            } else {
-              resolve('N/A'); // Changed from reject to resolve with 'N/A'
-            }
-          }
-        );
-      });
-    };
-  
-    try {
-      const [drivingTime, walkingTime, transitTime] = await Promise.all([
-        getTime(window.google.maps.TravelMode.DRIVING),
-        getTime(window.google.maps.TravelMode.WALKING),
-        getTime(window.google.maps.TravelMode.TRANSIT)
-      ]);
-      return { driving: drivingTime, walking: walkingTime, transit: transitTime };
-    } catch (error) {
-      console.error("Error getting travel times:", error);
-      return { driving: 'N/A', walking: 'N/A', transit: 'N/A' };
+    if (midpoint && coords1 && coords2 && !isLoading) {
+      fetchPlaces(midpoint.lat, midpoint.lng, coords1, coords2, type);
     }
   };
 
@@ -202,72 +172,48 @@ const MapComponent = () => {
     </div>
   );
 
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
-    const coords1 = await fetchCoordinates(location1, apiKey);
-    const coords2 = await fetchCoordinates(location2, apiKey);
-    setCoords1(coords1);
-    setCoords2(coords2);
-    if (coords1 && coords2) {
-      const calculatedMidpoint = calculateMidpoint(coords1, coords2);
+    setErrorMessage(null);
+    // Nominatim asks for max 1 request/second, so geocode one at a time
+    const newCoords1 = await fetchCoordinates(location1);
+    const newCoords2 = await fetchCoordinates(location2);
+    setCoords1(newCoords1);
+    setCoords2(newCoords2);
+    if (newCoords1 && newCoords2) {
+      const calculatedMidpoint = calculateMidpoint(newCoords1, newCoords2);
       setMidpoint(calculatedMidpoint);
       setMapCenter(calculatedMidpoint);
-  
-      // Calculate the distance between the two locations
+
       const distance = calculateDistance(
-        coords1.lat,
-        coords1.lng,
-        coords2.lat,
-        coords2.lng
+        newCoords1.lat,
+        newCoords1.lng,
+        newCoords2.lat,
+        newCoords2.lng
       );
-  
-      // Adjust the zoom level based on the distance
       const zoomLevel = distance < 5 ? 14 : distance < 10 ? 12 : 10;
       setMapZoom(zoomLevel);
-  
-      const location1LatLng = new window.google.maps.LatLng(coords1.lat, coords1.lng);
-      const location2LatLng = new window.google.maps.LatLng(coords2.lat, coords2.lng);
-  
-      // Determine searchTypes based on current searchType
-      let searchTypes;
-      switch(searchType) {
-        case 'bar':
-          searchTypes = ['bar', 'night_club'];
-          break;
-        case 'restaurant':
-          searchTypes = ['restaurant', 'meal_delivery', 'meal_takeaway'];
-          break;
-        default:
-          searchTypes = [searchType];
-      }
-  
-      fetchPlaces(calculatedMidpoint.lat, calculatedMidpoint.lng, location1LatLng, location2LatLng, searchTypes);
+
+      fetchPlaces(calculatedMidpoint.lat, calculatedMidpoint.lng, newCoords1, newCoords2, searchType);
     } else {
-      console.error("One or both locations could not be found.");
+      // Clear the previous search so no stale pins or results are left behind
+      setMidpoint(null);
+      setTopCoffeeShops([]);
+      const notFound = [
+        !newCoords1 && `"${location1}"`,
+        !newCoords2 && `"${location2}"`
+      ].filter(Boolean);
+      setErrorMessage(
+        `Couldn't find ${notFound.join(' or ')} on OpenStreetMap. ` +
+        `Business names are often missing - try a street address, postcode, or nearby landmark instead.`
+      );
     }
   };
 
-  const handleMarkerClick = (shop) => {
-    setSelectedShop(shop);
-  };
-
-  const handleInfoWindowClose = () => {
-    setSelectedShop(null);
-  };
-
-  const iconUrls = {
-    green: '/images/green-dot.png',
-    blue: '/images/blue-dot.png',
-    red: '/images/red-dot.png',
-    purple: '/images/purple-dot.png',
-    driving: '/images/car-driving.png',
-    walking: '/images/man-walking.png',
-    transit: '/images/public-transport.png'
-  };
-
-  const GoogleRating = ({ rating, totalRatings }) => {
+  const StarRating = ({ rating, totalRatings }) => {
+    if (rating == null) {
+      return <p className="text-sm opacity-70 mt-2 mb-2">No rating data available</p>;
+    }
     return (
       <div className="flex items-center mt-2 mb-2">
         <div className="rating rating-sm">
@@ -288,6 +234,9 @@ const MapComponent = () => {
       </div>
     );
   };
+
+  const defaultCenter = { lat: 51.5074, lng: -0.1278 }; // London
+  const center = mapCenter || currentLocation || defaultCenter;
 
   return (
     <div className="container mx-auto px-4 py-8 bg-gray-800">
@@ -320,70 +269,67 @@ const MapComponent = () => {
               className="input input-bordered w-full"
             />
           </div>
-          <button type="submit" className="btn btn-accent self-end">Search</button>
+          <button type="submit" className="btn btn-accent self-end" disabled={isLoading}>
+            {isLoading ? <span className="loading loading-spinner loading-sm"></span> : 'Search'}
+          </button>
         </div>
       </form>
       <div className="flex justify-center mb-4">
-        <button 
-          onClick={() => handleSearchTypeChange('cafe')} 
+        <button
+          onClick={() => handleSearchTypeChange('cafe')}
           className={`btn mx-2 ${searchType === 'cafe' ? 'btn-primary' : 'btn-secondary'}`}
         >
           Cafes
         </button>
-        <button 
-          onClick={() => handleSearchTypeChange('bar')} 
+        <button
+          onClick={() => handleSearchTypeChange('bar')}
           className={`btn mx-2 ${searchType === 'bar' ? 'btn-primary' : 'btn-secondary'}`}
         >
           Bars/Pubs
         </button>
-        <button 
-          onClick={() => handleSearchTypeChange('restaurant')} 
+        <button
+          onClick={() => handleSearchTypeChange('restaurant')}
           className={`btn mx-2 ${searchType === 'restaurant' ? 'btn-primary' : 'btn-secondary'}`}
         >
           Restaurants
         </button>
       </div>
+      {errorMessage && (
+        <div className="alert alert-warning mb-4">
+          <span>{errorMessage}</span>
+        </div>
+      )}
       <div className="mb-8">
-        <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={libraries}>
-          <GoogleMap
-            mapContainerStyle={mapContainerStyle}
-            center={mapCenter || currentLocation || { lat: 0, lng: 0 }}
-            zoom={mapZoom}
-          >
-          {midpoint && <Marker position={midpoint} icon={{ url: iconUrls.green }} />}
-          {coords1 && <Marker position={coords1} icon={{ url: iconUrls.blue }} />}
-          {coords2 && <Marker position={coords2} icon={{ url: iconUrls.blue }} />}
-          {currentLocation && <Marker position={currentLocation} icon={{ url: iconUrls.purple }} />}
-          {topCoffeeShops.map((shop, index) => (
+        <MapContainer
+          center={[center.lat, center.lng]}
+          zoom={mapZoom}
+          style={{ height: "400px", width: "100%", maxWidth: "100vw", margin: "0 auto" }}
+        >
+          <MapUpdater center={center} zoom={mapZoom} />
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {midpoint && <Marker position={[midpoint.lat, midpoint.lng]} icon={icons.green} />}
+          {coords1 && <Marker position={[coords1.lat, coords1.lng]} icon={icons.blue} />}
+          {coords2 && <Marker position={[coords2.lat, coords2.lng]} icon={icons.blue} />}
+          {currentLocation && <Marker position={[currentLocation.lat, currentLocation.lng]} icon={icons.purple} />}
+          {topCoffeeShops.map((shop) => (
             <Marker
               key={shop.id}
-              position={{ lat: shop.lat, lng: shop.lon }}
-              icon={{ url: iconUrls.red }}
-              onClick={() => handleMarkerClick(shop)}
-            />
-          ))}
-          {selectedShop && (
-            <InfoWindow
-              position={{ lat: selectedShop.lat, lng: selectedShop.lon }}
-              onCloseClick={handleInfoWindowClose}
+              position={[shop.lat, shop.lon]}
+              icon={icons.red}
             >
-              <div>
-                <h3>{selectedShop.name}</h3>
-                <p>{selectedShop.address}</p>
-                {selectedShop.location && <p>{selectedShop.location}</p>}
-
-                <GoogleMap
-                  mapContainerStyle={{ height: '200px', width: '300px' }}
-                  center={{ lat: selectedShop.lat, lng: selectedShop.lon }}
-                  zoom={16}
-                >
-                  <Marker position={{ lat: selectedShop.lat, lng: selectedShop.lon }} />
-                </GoogleMap>
-              </div>
-            </InfoWindow>
-          )}
-          </GoogleMap>
-        </LoadScript>
+              <Popup>
+                <div>
+                  <h3 className="font-semibold">{shop.name}</h3>
+                  <p>{shop.address}</p>
+                  <p>{shop.distance.toFixed(2)} km from midpoint</p>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
       </div>
       <Legend searchType={searchType} />
       {topCoffeeShops.length > 0 && (
@@ -397,14 +343,14 @@ const MapComponent = () => {
                 <div className="card-body">
                   <h3 className="card-title text-xl">{shop.name}</h3>
                   <p className="text-gray-600">{shop.address}</p>
-                  <GoogleRating rating={shop.googleRating} totalRatings={shop.userRatingsTotal} />
-                  <TravelTimes 
+                  <StarRating rating={shop.rating} totalRatings={shop.numReviews} />
+                  <TravelTimes
                     location={location1}
                     drivingTime={shop.travelTimes1.driving}
                     walkingTime={shop.travelTimes1.walking}
                     transitTime={shop.travelTimes1.transit}
                   />
-                  <TravelTimes 
+                  <TravelTimes
                     location={location2}
                     drivingTime={shop.travelTimes2.driving}
                     walkingTime={shop.travelTimes2.walking}
