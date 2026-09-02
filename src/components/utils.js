@@ -6,25 +6,39 @@
 //  - Public transport times: TfL Unified API (London only) - free, no key
 //  - Ratings (optional): TripAdvisor Content API - free 5,000 calls/month, needs key
 
-export const fetchCoordinates = async (locationName) => {
-  const geocodeUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=json&limit=1`;
+// Nominatim is strong on addresses/postcodes but often misses business and
+// building names, so fall back to Photon (also free, no key) when it draws a blank.
+const geocodeWithNominatim = async (locationName) => {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=json&limit=1`;
+  const response = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!data || data.length === 0) return null;
+  return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+};
 
-  try {
-    const response = await fetch(geocodeUrl, {
-      headers: { 'Accept-Language': 'en' }
-    });
-    const data = await response.json();
-    console.log(`Geocoding response for ${locationName}:`, data);
-    if (data && data.length > 0) {
-      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-    } else {
-      console.error(`No results found for the specified location: ${locationName}`);
-      return null;
+const geocodeWithPhoton = async (locationName) => {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(locationName)}&limit=1&lang=en`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  const data = await response.json();
+  const feature = data.features && data.features[0];
+  if (!feature || !feature.geometry) return null;
+  const [lng, lat] = feature.geometry.coordinates;
+  return { lat, lng };
+};
+
+export const fetchCoordinates = async (locationName) => {
+  for (const geocode of [geocodeWithNominatim, geocodeWithPhoton]) {
+    try {
+      const coords = await geocode(locationName);
+      if (coords) return coords;
+    } catch (error) {
+      console.error(`Error fetching coordinates for ${locationName}:`, error);
     }
-  } catch (error) {
-    console.error(`Error fetching coordinates for ${locationName}:`, error);
-    return null;
   }
+  console.error(`No results found for the specified location: ${locationName}`);
+  return null;
 };
 
 // Maps the app's search types to OpenStreetMap amenity tags

@@ -196,7 +196,17 @@ const MapComponent = () => {
 
       fetchPlaces(calculatedMidpoint.lat, calculatedMidpoint.lng, newCoords1, newCoords2, searchType);
     } else {
-      setErrorMessage("One or both locations could not be found.");
+      // Clear the previous search so no stale pins or results are left behind
+      setMidpoint(null);
+      setTopCoffeeShops([]);
+      const notFound = [
+        !newCoords1 && `"${location1}"`,
+        !newCoords2 && `"${location2}"`
+      ].filter(Boolean);
+      setErrorMessage(
+        `Couldn't find ${notFound.join(' or ')} on OpenStreetMap. ` +
+        `Business names are often missing - try a street address, postcode, or nearby landmark instead.`
+      );
     }
   };
 
